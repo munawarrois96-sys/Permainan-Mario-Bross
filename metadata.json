@@ -1,0 +1,6 @@
+{
+  "name": "Super Mario Pancasila: Jelajah Hukum Indonesia",
+  "description": "Game Edukasi 2D Platformer Pendidikan Pancasila SMA/MA Kelas XI Bab 2 UUD NRI 1945 & Peraturan Perundang-Undangan oleh Guru Munawar Rois, S.Pd. SMA Negeri 1 Mande",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
