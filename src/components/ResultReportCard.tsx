@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { GameResult } from '../types/game';
+import { QUESTIONS } from '../data/questions';
 import {
   Award,
   Download,
@@ -14,7 +15,8 @@ import {
   Clock,
   Sparkles,
   ShieldCheck,
-  Check
+  Check,
+  FileDown
 } from 'lucide-react';
 
 interface ResultReportCardProps {
@@ -24,9 +26,268 @@ interface ResultReportCardProps {
 
 export const ResultReportCard: React.FC<ResultReportCardProps> = ({ result, onRestart }) => {
   const [copied, setCopied] = useState(false);
+  const [downloadingWord, setDownloadingWord] = useState(false);
 
   const handlePrint = () => {
     window.print();
+  };
+
+  // Export to Microsoft Word (.doc) natively supported by Word, WPS Office (HP & Komputer)
+  const handleDownloadWord = () => {
+    setDownloadingWord(true);
+
+    const safeName = result.student.nama.replace(/[^a-zA-Z0-9]/g, '_');
+    const fileName = `REKAP_NILAI_PANCASILA_${safeName}_${result.student.kelas}.doc`;
+
+    // Generate table rows of questions and student answers
+    let rowsHtml = '';
+    result.answers.forEach((ans, idx) => {
+      const q = QUESTIONS.find((item) => item.id === ans.questionId);
+      const isCorrect = ans.isCorrect;
+      const chosenLetter = ans.selected >= 0 ? String.fromCharCode(65 + ans.selected) : '-';
+      const keyLetter = q ? String.fromCharCode(65 + q.correctIndex) : '-';
+
+      rowsHtml += `
+        <tr style="background-color: ${idx % 2 === 0 ? '#f8fafc' : '#ffffff'};">
+          <td style="text-align: center; font-weight: bold; padding: 6px;">${ans.questionId}</td>
+          <td style="padding: 6px;">${ans.topic}</td>
+          <td style="text-align: center; font-weight: bold; padding: 6px;">${chosenLetter}</td>
+          <td style="text-align: center; font-weight: bold; padding: 6px; color: #0284c7;">${keyLetter}</td>
+          <td style="text-align: center; font-weight: bold; padding: 6px; color: ${isCorrect ? '#16a34a' : '#dc2626'};">
+            ${isCorrect ? 'BENAR (✓)' : 'SALAH (✗)'}
+          </td>
+        </tr>
+      `;
+    });
+
+    const docContent = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset='utf-8'>
+        <title>Laporan Asesmen Sumatif Pendidikan Pancasila Kelas XI - SMAN 1 Mande</title>
+        <!--[if gte mso 9]>
+        <xml>
+        <w:WordDocument>
+        <w:View>Print</w:View>
+        <w:Zoom>100</w:Zoom>
+        <w:DoNotOptimizeForBrowser/>
+        </w:WordDocument>
+        </xml>
+        <![endif]-->
+        <style>
+          body {
+            font-family: 'Calibri', 'Arial', sans-serif;
+            font-size: 11pt;
+            color: #0f172a;
+            line-height: 1.4;
+            padding: 20px;
+          }
+          .kop-table {
+            width: 100%;
+            border-bottom: 3px double #0f172a;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+          }
+          .kop-text {
+            text-align: center;
+          }
+          .title {
+            font-size: 14pt;
+            font-weight: bold;
+            text-align: center;
+            color: #0369a1;
+            margin: 14px 0;
+            text-transform: uppercase;
+          }
+          .meta-table, .score-table, .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 16px;
+          }
+          .meta-table td {
+            padding: 5px 8px;
+            font-size: 11pt;
+          }
+          .score-box {
+            border: 2px solid #0284c7;
+            background-color: #f0f9ff;
+            padding: 12px;
+            text-align: center;
+            margin-bottom: 20px;
+          }
+          .score-num {
+            font-size: 32pt;
+            font-weight: bold;
+            color: #0369a1;
+            margin: 4px 0;
+          }
+          .data-table th {
+            background-color: #0284c7;
+            color: #ffffff;
+            font-weight: bold;
+            padding: 8px;
+            text-align: center;
+            border: 1px solid #cbd5e1;
+            font-size: 10pt;
+          }
+          .data-table td {
+            border: 1px solid #cbd5e1;
+            padding: 6px 8px;
+            font-size: 10pt;
+          }
+          .desc-box {
+            background-color: #f8fafc;
+            border-left: 4px solid #0284c7;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            font-size: 10.5pt;
+            text-align: justify;
+          }
+          .sig-table {
+            width: 100%;
+            margin-top: 30px;
+          }
+          .sig-table td {
+            text-align: center;
+            vertical-align: top;
+            width: 50%;
+          }
+          .catatan-guru {
+            background-color: #ecfdf5;
+            border: 1px dashed #059669;
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+            color: #065f46;
+            margin-bottom: 20px;
+          }
+        </style>
+      </head>
+      <body>
+        <!-- KOP SURAT RESMI SMAN 1 MANDE -->
+        <table class="kop-table" border="0">
+          <tr>
+            <td class="kop-text">
+              <div style="font-size: 10pt; font-weight: bold; letter-spacing: 1px; color: #475569;">
+                PEMERINTAH DAERAH PROVINSI JAWA BARAT &bull; DINAS PENDIDIKAN
+              </div>
+              <div style="font-size: 16pt; font-weight: bold; color: #0f172a; margin: 4px 0;">
+                SMA NEGERI 1 MANDE
+              </div>
+              <div style="font-size: 9pt; color: #475569;">
+                Jl. Bobojong No. 1, Kecamatan Mande, Kabupaten Cianjur, Jawa Barat
+              </div>
+            </td>
+          </tr>
+        </table>
+
+        <div class="title">
+          LEMBAR REKAPITULASI ASESMEN SUMATIF PENDIDIKAN PANCASILA<br>
+          <span style="font-size: 11pt; color: #475569; font-weight: normal;">
+            Game Edukatif: Super Mario Pancasila - Jelajah Hukum Indonesia (Fase F Kelas XI)
+          </span>
+        </div>
+
+        <div class="catatan-guru">
+          "TERIMAKASIH YANG SUDAH MENGISI QUIZ INI KALIAN LUAR BIASA"
+        </div>
+
+        <!-- IDENTITAS SISWA & MATA PELAJARAN -->
+        <table class="meta-table" border="0">
+          <tr>
+            <td style="width: 25%; font-weight: bold;">Mata Pelajaran</td>
+            <td style="width: 25%;">: Pendidikan Pancasila</td>
+            <td style="width: 25%; font-weight: bold;">Nama Peserta Didik</td>
+            <td style="width: 25%; font-weight: bold; color: #0369a1;">: ${result.student.nama}</td>
+          </tr>
+          <tr>
+            <td style="font-weight: bold;">Materi / Modul Ajar</td>
+            <td>: Bab 2 (UUD 1945 & Produk Hukum)</td>
+            <td style="font-weight: bold;">Kelas / Rombel</td>
+            <td style="font-weight: bold;">: ${result.student.kelas}</td>
+          </tr>
+          <tr>
+            <td style="font-weight: bold;">Guru Pengampu</td>
+            <td style="font-weight: bold;">: Munawar Rois, S.Pd.</td>
+            <td style="font-weight: bold;">Waktu Asesmen</td>
+            <td>: ${result.completedAt}</td>
+          </tr>
+          <tr>
+            <td style="font-weight: bold;">Integritas Ujian</td>
+            <td colspan="3">: ${result.tabSwitchCount === 0 ? 'Tertib & Disiplin (0 kali buka tab lain)' : `${result.tabSwitchCount} kali membuka tab lain`}</td>
+          </tr>
+        </table>
+
+        <!-- REKAPITULASI NILAI -->
+        <div class="score-box">
+          <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; color: #0369a1;">NILAI AKHIR ASESMEN (SKALA 100)</div>
+          <div class="score-num">${result.finalGrade}</div>
+          <div style="font-size: 12pt; font-weight: bold; color: #0f172a;">Kategori KKTP: ${result.predicate}</div>
+          <div style="font-size: 10pt; color: #475569; margin-top: 4px;">
+            Akurasi: ${result.correctAnswers} Benar dari ${result.totalQuestions} Soal (${Math.round((result.correctAnswers / result.totalQuestions) * 100)}%) &bull; Skor Mario: ${result.score} poin &bull; Koin: ${result.coins}
+          </div>
+        </div>
+
+        <!-- DESKRIPSI CAPAIAN PEMBELAJARAN SESUAI MODUL AJAR KELAS XI -->
+        <div style="font-weight: bold; font-size: 11pt; color: #0f172a; margin-bottom: 6px;">
+          Deskripsi Capaian Pembelajaran (Kriteria Ketercapaian Tujuan Pembelajaran):
+        </div>
+        <div class="desc-box">
+          ${result.description}
+        </div>
+
+        <!-- RINCIAN BUTIR SOAL 1 S.D 30 -->
+        <div style="font-weight: bold; font-size: 11pt; color: #0f172a; margin: 16px 0 8px 0;">
+          Rincian Jawaban Soal Kuis (30 Butir Soal):
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width: 8%;">No</th>
+              <th style="width: 48%;">Materi Pembelajaran</th>
+              <th style="width: 14%;">Jawaban Siswa</th>
+              <th style="width: 14%;">Kunci Jawaban</th>
+              <th style="width: 16%;">Hasil Evaluasi</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+
+        <!-- TANDA TANGAN DOKUMEN -->
+        <table class="sig-table" border="0">
+          <tr>
+            <td>
+              Mengetahui,<br>
+              <strong>Orang Tua / Wali Siswa</strong>
+              <br><br><br><br>
+              ( .................................................... )
+            </td>
+            <td>
+              Mande, ${result.completedAt.split(',')[0]}<br>
+              Guru Mata Pelajaran Pendidikan Pancasila,
+              <br><br><br><br>
+              <strong><u>MUNAWAR ROIS, S.Pd.</u></strong><br>
+              <span style="font-size: 9pt; color: #475569;">SMA Negeri 1 Mande</span>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob(['\ufeff' + docContent], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setTimeout(() => setDownloadingWord(false), 1500);
   };
 
   const handleCopyText = () => {
@@ -76,22 +337,36 @@ Catatan Guru:
         </p>
       </div>
 
-      {/* Action buttons (Print/Download and Copy) */}
+      {/* Action buttons (Download Word, Print/PDF, and Copy) */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6 no-print">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Unduh Word Button (.doc / .docx) */}
+          <button
+            onClick={handleDownloadWord}
+            disabled={downloadingWord}
+            className="flex items-center gap-2 px-5 py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg border-2 border-blue-400 transition-all active:scale-95 cursor-pointer"
+            title="Unduh file dokumen Word yang bisa dibuka di Handphone atau Komputer"
+          >
+            <FileDown className="w-4 h-4 text-yellow-300" />
+            <span>{downloadingWord ? 'Menyiapkan File Word...' : 'Unduh Format Word (.doc)'}</span>
+          </button>
+
+          {/* Cetak / Simpan PDF */}
           <button
             onClick={handlePrint}
-            className="flex items-center gap-2 px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
           >
             <Download className="w-4 h-4" />
-            <span>Unduh / Cetak PDF Hasil Nilai</span>
+            <span>Cetak / PDF</span>
           </button>
+
+          {/* Salin Teks */}
           <button
             onClick={handleCopyText}
             className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
           >
             {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-            <span>{copied ? 'Tersalin ke Clipboard!' : 'Salin Teks Nilai'}</span>
+            <span>{copied ? 'Tersalin!' : 'Salin Teks'}</span>
           </button>
         </div>
 
@@ -104,9 +379,19 @@ Catatan Guru:
         </button>
       </div>
 
+      {/* Device Compatibility Notice */}
+      <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between text-xs text-blue-900 no-print">
+        <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+          <span>
+            <strong>Tips Unduh Nilai:</strong> File Word (<strong>.doc</strong>) tersimpan di folder Unduhan / Download dan dapat langsung dibuka di aplikasi Microsoft Word, Google Docs, atau WPS Office pada <strong>Handphone (Android/iOS)</strong> maupun <strong>Komputer/Laptop</strong>.
+          </span>
+        </div>
+      </div>
+
       {/* Printable Official Document / Report Slip */}
       <div className="print-card bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-900 p-6 sm:p-10">
-        {/* Official Letterhead (KOP SURAT RESMI SMAN 1 MANDE) */}
+        {/* Official Letterhead */}
         <div className="border-b-4 border-double border-slate-800 pb-5 mb-6 flex items-center justify-between gap-4">
           <div className="w-20 h-20 sm:w-24 sm:h-24 shrink-0 flex items-center justify-center">
             <img

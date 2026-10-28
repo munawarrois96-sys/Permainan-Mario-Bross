@@ -24,15 +24,13 @@ import {
   CheckCircle2,
   AlertCircle,
   ListOrdered,
-  Layers
+  Layers,
+  ArrowRight
 } from 'lucide-react';
 
 export default function App() {
   // Navigation / Game Screen State
   const [screen, setScreen] = useState<'START' | 'PLAYING' | 'RESULT'>('START');
-
-  // Mode: Platformer Mario vs Direct Quiz Mode
-  const [playMode, setPlayMode] = useState<'PLATFORMER' | 'DIRECT_QUIZ'>('PLATFORMER');
 
   // Student Profile
   const [student, setStudent] = useState<StudentProfile>(() => {
@@ -63,6 +61,12 @@ export default function App() {
     new Map()
   );
   const [activeQuestion, setActiveQuestion] = useState<Question | null>(null);
+
+  // Automatic World transition notification
+  const [transitionNotice, setTransitionNotice] = useState<{ show: boolean; text: string }>({
+    show: false,
+    text: '',
+  });
 
   // Anti-cheat tracking
   const [tabSwitchCount, setTabSwitchCount] = useState<number>(0);
@@ -156,100 +160,169 @@ export default function App() {
     setActiveQuestion(q);
   }, []);
 
-  // Handle Question Answer Submission
+  // Calculate final grade & evaluation based on Modul Ajar Kelas XI with explicit map
+  const calculateResultWithMap = useCallback(
+    (map: Map<number, { isCorrect: boolean; selected: number }>, currentScore: number, currentCoins: number): GameResult => {
+      let correctCount = 0;
+      const answerRecords: AnswerRecord[] = [];
+
+      QUESTIONS.forEach((q) => {
+        const rec = map.get(q.id);
+        if (rec && rec.isCorrect) {
+          correctCount++;
+          answerRecords.push({
+            questionId: q.id,
+            selected: rec.selected,
+            isCorrect: true,
+            topic: q.topic,
+          });
+        } else {
+          answerRecords.push({
+            questionId: q.id,
+            selected: rec ? rec.selected : -1,
+            isCorrect: false,
+            topic: q.topic,
+          });
+        }
+      });
+
+      const finalGrade = Math.round((correctCount / QUESTIONS.length) * 100);
+
+      let predicate: 'Sangat Mahir' | 'Mahir' | 'Cakap' | 'Perlu Bimbingan' = 'Perlu Bimbingan';
+      let description = '';
+
+      if (finalGrade >= 90) {
+        predicate = 'Sangat Mahir';
+        description = `Peserta didik menunjukkan penguasaan materi yang sangat istimewa (kategori Sangat Mahir). Mampu menganalisis sejarah dan kedudukan UUD NRI 1945 sebagai hukum dasar tertinggi, menguasai hierarki perundang-undangan (UU 12/2011 jo UU 13/2022), memahami asas perundang-undangan (Lex Superior, Lex Specialis, Lex Posterior), kewenangan pengujian norma (Judicial Review MK & MA), serta menginternalisasi budaya sadar hukum Profil Pelajar Pancasila secara prima.`;
+      } else if (finalGrade >= 80) {
+        predicate = 'Mahir';
+        description = `Peserta didik mencapai kriteria ketercapaian tujuan pembelajaran dengan sangat baik (kategori Mahir). Memiliki pemahaman yang kokoh tentang hakikat konstitusi UUD 1945, tata urutan peraturan perundang-undangan, dan proses pembentukan produk hukum di Indonesia. Disarankan untuk terus memperluas studi kasus terkait partisipasi bermakna (meaningful participation) dalam perumusan undang-undang.`;
+      } else if (finalGrade >= 70) {
+        predicate = 'Cakap';
+        description = `Peserta didik telah memenuhi kriteria ketuntasan minimal tujuan pembelajaran modul ajar (kategori Cakap). Mampu mengidentifikasi hierarki peraturan perundang-undangan dan kedudukan UUD 1945, namun masih memerlukan penguatan pada materi muatan peraturan perundang-undangan di tingkat daerah serta pembedaan ranah uji materil di Mahkamah Konstitusi vs Mahkamah Agung.`;
+      } else {
+        predicate = 'Perlu Bimbingan';
+        description = `Peserta didik belum mencapai kriteria ketuntasan tujuan pembelajaran secara optimal (kategori Perlu Bimbingan). Disarankan untuk mengikuti sesi remedial bersama Guru Munawar Rois, S.Pd., dengan fokus penguatan pada sejarah perumusan UUD 1945, tata urutan hierarki 7 jenis peraturan perundang-undangan, serta asas-asas hukum nasional.`;
+      }
+
+      const timeSpent = Math.max(10, Math.floor((Date.now() - student.startedAt) / 1000));
+      const nowStr = new Date().toLocaleDateString('id-ID', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      return {
+        student,
+        score: currentScore,
+        coins: currentCoins,
+        correctAnswers: correctCount,
+        totalQuestions: QUESTIONS.length,
+        finalGrade,
+        predicate,
+        description,
+        tabSwitchCount,
+        completedAt: nowStr,
+        timeSpentSeconds: timeSpent,
+        answers: answerRecords,
+      };
+    },
+    [student, tabSwitchCount]
+  );
+
+  // Handle Question Answer Submission with Automatic Progression
   const handleAnswerSubmit = (isCorrect: boolean, selectedIdx: number) => {
     if (!activeQuestion) return;
 
-    setAnsweredMap((prev) => {
-      const next = new Map(prev);
-      next.set(activeQuestion.id, { isCorrect, selected: selectedIdx });
-      return next;
-    });
+    const currentId = activeQuestion.id;
+    const nextMap = new Map(answeredMap);
+    nextMap.set(currentId, { isCorrect, selected: selectedIdx });
+    setAnsweredMap(nextMap);
 
-    if (isCorrect) {
-      setScore((s) => s + 200);
-      setCoins((c) => c + 100);
-    } else {
-      setScore((s) => Math.max(0, s + 20));
-    }
+    const newScore = score + (isCorrect ? 200 : 20);
+    const newCoins = coins + (isCorrect ? 100 : 0);
+    setScore(newScore);
+    setCoins(newCoins);
 
     setActiveQuestion(null);
-  };
 
-  // Calculate final grade & evaluation based on Modul Ajar Kelas XI
-  const calculateResult = useCallback((): GameResult => {
-    let correctCount = 0;
-    const answerRecords: AnswerRecord[] = [];
+    // Group IDs by World
+    const world1Ids = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    const world2Ids = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+    const world3Ids = [21, 22, 23, 24, 25, 26, 27, 28, 29, 30];
 
-    QUESTIONS.forEach((q) => {
-      const rec = answeredMap.get(q.id);
-      if (rec && rec.isCorrect) {
-        correctCount++;
-        answerRecords.push({
-          questionId: q.id,
-          selected: rec.selected,
-          isCorrect: true,
-          topic: q.topic,
-        });
-      } else {
-        answerRecords.push({
-          questionId: q.id,
-          selected: rec ? rec.selected : -1,
-          isCorrect: false,
-          topic: q.topic,
-        });
-      }
-    });
+    const isWorld1Complete = world1Ids.every((id) => nextMap.has(id));
+    const isWorld2Complete = world2Ids.every((id) => nextMap.has(id));
+    const isWorld3Complete = world3Ids.every((id) => nextMap.has(id));
 
-    const finalGrade = Math.round((correctCount / QUESTIONS.length) * 100);
-
-    let predicate: 'Sangat Mahir' | 'Mahir' | 'Cakap' | 'Perlu Bimbingan' = 'Perlu Bimbingan';
-    let description = '';
-
-    if (finalGrade >= 90) {
-      predicate = 'Sangat Mahir';
-      description = `Peserta didik menunjukkan penguasaan materi yang sangat istimewa (kategori Sangat Mahir). Mampu menganalisis sejarah dan kedudukan UUD NRI 1945 sebagai hukum dasar tertinggi, menguasai hierarki perundang-undangan (UU 12/2011 jo UU 13/2022), memahami asas perundang-undangan (Lex Superior, Lex Specialis, Lex Posterior), kewenangan pengujian norma (Judicial Review MK & MA), serta menginternalisasi budaya sadar hukum Profil Pelajar Pancasila secara prima.`;
-    } else if (finalGrade >= 80) {
-      predicate = 'Mahir';
-      description = `Peserta didik mencapai kriteria ketercapaian tujuan pembelajaran dengan sangat baik (kategori Mahir). Memiliki pemahaman yang kokoh tentang hakikat konstitusi UUD 1945, tata urutan peraturan perundang-undangan, dan proses pembentukan produk hukum di Indonesia. Disarankan untuk terus memperluas studi kasus terkait partisipasi bermakna (meaningful participation) dalam perumusan undang-undang.`;
-    } else if (finalGrade >= 70) {
-      predicate = 'Cakap';
-      description = `Peserta didik telah memenuhi kriteria ketuntasan minimal tujuan pembelajaran modul ajar (kategori Cakap). Mampu mengidentifikasi hierarki peraturan perundang-undangan dan kedudukan UUD 1945, namun masih memerlukan penguatan pada materi muatan peraturan perundang-undangan di tingkat daerah serta pembedaan ranah uji materil di Mahkamah Konstitusi vs Mahkamah Agung.`;
-    } else {
-      predicate = 'Perlu Bimbingan';
-      description = `Peserta didik belum mencapai kriteria ketuntasan tujuan pembelajaran secara optimal (kategori Perlu Bimbingan). Disarankan untuk mengikuti sesi remedial bersama Guru Munawar Rois, S.Pd., dengan fokus penguatan pada sejarah perumusan UUD 1945, tata urutan hierarki 7 jenis peraturan perundang-undangan, serta asas-asas hukum nasional.`;
+    // CHECK IF WORLD 3 IS COMPLETE (OR ALL 30 QUESTIONS ANSWERED / FINISHED SOAL 30):
+    if (nextMap.size >= QUESTIONS.length || isWorld3Complete || currentId === 30) {
+      soundManager.stopBgm();
+      soundManager.playVictory();
+      setTransitionNotice({
+        show: true,
+        text: '🎉 SELAMAT! Seluruh soal World 1, 2, & 3 telah selesai! Menerbitkan Rekap Nilai Asesmen...',
+      });
+      setTimeout(() => {
+        setTransitionNotice({ show: false, text: '' });
+        const res = calculateResultWithMap(nextMap, newScore, newCoins);
+        setGameResult(res);
+        setScreen('RESULT');
+      }, 1400);
+      return;
     }
 
-    const timeSpent = Math.max(10, Math.floor((Date.now() - student.startedAt) / 1000));
-    const nowStr = new Date().toLocaleDateString('id-ID', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    // AUTOMATIC ADVANCE WORLD 1 -> WORLD 2:
+    if (currentWorld === 1 && (isWorld1Complete || currentId === 10)) {
+      setCurrentWorld(2);
+      soundManager.playPowerup();
+      setTransitionNotice({
+        show: true,
+        text: '🚀 HEBAT! Soal World 1 selesai, otomatis lanjut ke World 2 (Hierarki Peraturan Perundang-Undangan)!',
+      });
+      setTimeout(() => setTransitionNotice({ show: false, text: '' }), 4000);
 
-    return {
-      student,
-      score,
-      coins,
-      correctAnswers: correctCount,
-      totalQuestions: QUESTIONS.length,
-      finalGrade,
-      predicate,
-      description,
-      tabSwitchCount,
-      completedAt: nowStr,
-      timeSpentSeconds: timeSpent,
-      answers: answerRecords,
-    };
-  }, [answeredMap, score, coins, student, tabSwitchCount]);
+      const nextQ = QUESTIONS.find((q) => q.id === 11);
+      if (nextQ && !nextMap.has(11)) {
+        setTimeout(() => setActiveQuestion(nextQ), 700);
+      }
+      return;
+    }
 
-  // Finish Game
+    // AUTOMATIC ADVANCE WORLD 2 -> WORLD 3:
+    if (currentWorld === 2 && (isWorld2Complete || currentId === 20)) {
+      setCurrentWorld(3);
+      soundManager.playPowerup();
+      setTransitionNotice({
+        show: true,
+        text: '🚀 LUAR BIASA! Soal World 2 selesai, otomatis lanjut ke World 3 (Jenis & Materi Muatan Produk Hukum)!',
+      });
+      setTimeout(() => setTransitionNotice({ show: false, text: '' }), 4000);
+
+      const nextQ = QUESTIONS.find((q) => q.id === 21);
+      if (nextQ && !nextMap.has(21)) {
+        setTimeout(() => setActiveQuestion(nextQ), 700);
+      }
+      return;
+    }
+
+    // AUTOMATIC SEQUENTIAL NEXT QUESTION WITHIN SAME WORLD:
+    const nextQId = currentId + 1;
+    if (nextQId <= 30 && !nextMap.has(nextQId)) {
+      const nextQ = QUESTIONS.find((q) => q.id === nextQId);
+      if (nextQ) {
+        setTimeout(() => setActiveQuestion(nextQ), 500);
+      }
+    }
+  };
+
+  // Manual Finish Game
   const handleFinishGame = () => {
     soundManager.stopBgm();
-    const res = calculateResult();
+    const res = calculateResultWithMap(answeredMap, score, coins);
     setGameResult(res);
     setScreen('RESULT');
   };
@@ -475,6 +548,24 @@ export default function App() {
         {/* ========================================================= */}
         {screen === 'PLAYING' && (
           <div className="w-full flex flex-col items-center gap-4">
+            {/* Automatic Transition Banner */}
+            {transitionNotice.show && (
+              <div className="w-full max-w-5xl p-4 bg-emerald-600 text-white rounded-2xl shadow-xl border-2 border-yellow-300 flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
+                <div className="flex items-center gap-3">
+                  <Sparkles className="w-6 h-6 text-yellow-300 animate-spin shrink-0" />
+                  <span className="font-retro text-xs sm:text-sm font-bold leading-normal">
+                    {transitionNotice.text}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setTransitionNotice({ show: false, text: '' })}
+                  className="px-2.5 py-1 bg-white/20 hover:bg-white/30 rounded text-xs text-white"
+                >
+                  OK
+                </button>
+              </div>
+            )}
+
             {/* World Switcher & Info Bar */}
             <div className="w-full max-w-5xl flex flex-wrap items-center justify-between bg-white/95 backdrop-blur-xs p-3 rounded-2xl border-2 border-sky-600 shadow-md gap-3">
               <div className="flex items-center gap-2">
@@ -527,14 +618,14 @@ export default function App() {
               </div>
             </div>
 
-            {/* Bilah Akses Cepat 10 Blok Soal (Direct Question Blocks Bar) */}
+            {/* Bilah Akses Cepat 10 Blok Soal */}
             <div className="w-full max-w-5xl bg-slate-900/90 text-white p-3 rounded-2xl border-2 border-yellow-400 shadow-md">
               <div className="flex items-center justify-between mb-2 px-1">
                 <span className="font-retro text-[10px] text-yellow-300 flex items-center gap-1.5">
                   <ListOrdered className="w-3.5 h-3.5" />
-                  <span>DAFTAR 10 SOAL WORLD {currentWorld} (KLIK UNTUK BUKA SOAL LANGSUNG):</span>
+                  <span>DAFTAR 10 SOAL WORLD {currentWorld} (KLIK UNTUK BUKA SOAL):</span>
                 </span>
-                <span className="text-[11px] text-slate-400">
+                <span className="text-[11px] text-slate-400 font-mono">
                   {currentWorldQuestions.filter((q) => answeredQuestionIds.has(q.id)).length}/10 Terjawab
                 </span>
               </div>
