@@ -1,6 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GameResult } from '../types/game';
 import { QUESTIONS } from '../data/questions';
+import {
+  googleSignIn,
+  googleSignOut,
+  getAccessToken,
+  initAuth
+} from '../services/googleAuth';
+import {
+  syncResultToGoogleSheets,
+  getSavedSpreadsheetId,
+  saveSpreadsheetId
+} from '../services/googleSheets';
+import { User } from 'firebase/auth';
 import {
   Award,
   Download,
@@ -10,13 +22,19 @@ import {
   AlertCircle,
   FileText,
   Calendar,
-  User,
+  User as UserIcon,
   School,
   Clock,
   Sparkles,
   ShieldCheck,
   Check,
-  FileDown
+  FileDown,
+  FileSpreadsheet,
+  ExternalLink,
+  Loader2,
+  Settings2,
+  LogOut,
+  Share2
 } from 'lucide-react';
 
 interface ResultReportCardProps {
@@ -28,18 +46,77 @@ export const ResultReportCard: React.FC<ResultReportCardProps> = ({ result, onRe
   const [copied, setCopied] = useState(false);
   const [downloadingWord, setDownloadingWord] = useState(false);
 
+  // Google Auth & Sheets states
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isSyncingSheets, setIsSyncingSheets] = useState(false);
+  const [sheetUrl, setSheetUrl] = useState<string | null>(null);
+  const [sheetId, setSheetId] = useState<string>(getSavedSpreadsheetId());
+  const [syncSuccess, setSyncSuccess] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [showSheetSettings, setShowSheetSettings] = useState(false);
+
+  // Initialize Auth state listener
+  useEffect(() => {
+    const unsubscribe = initAuth(
+      (user) => setCurrentUser(user),
+      () => setCurrentUser(null)
+    );
+    return () => unsubscribe();
+  }, []);
+
   const handlePrint = () => {
     window.print();
   };
 
-  // Export to Microsoft Word (.doc) natively supported by Word, WPS Office (HP & Komputer)
+  // Google Sign In handler
+  const handleGoogleLogin = async () => {
+    setIsLoggingIn(true);
+    setSyncError(null);
+    try {
+      const res = await googleSignIn();
+      if (res) {
+        setCurrentUser(res.user);
+      }
+    } catch (err: any) {
+      setSyncError(err.message || 'Gagal masuk akun Google.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  // Sync to Google Sheets handler
+  const handleSyncToSheets = async () => {
+    setIsSyncingSheets(true);
+    setSyncError(null);
+    try {
+      let token = await getAccessToken();
+      if (!token) {
+        const loginRes = await googleSignIn();
+        if (!loginRes) throw new Error('Otorisasi Google diperlukan.');
+        token = loginRes.accessToken;
+        setCurrentUser(loginRes.user);
+      }
+
+      const syncRes = await syncResultToGoogleSheets(result, sheetId.trim() || undefined);
+      setSheetUrl(syncRes.spreadsheetUrl);
+      setSheetId(syncRes.spreadsheetId);
+      setSyncSuccess(true);
+    } catch (err: any) {
+      console.error('Sync error:', err);
+      setSyncError(err.message || 'Gagal menyinkronkan data ke Google Sheets.');
+    } finally {
+      setIsSyncingSheets(false);
+    }
+  };
+
+  // Export to Microsoft Word (.doc)
   const handleDownloadWord = () => {
     setDownloadingWord(true);
 
     const safeName = result.student.nama.replace(/[^a-zA-Z0-9]/g, '_');
     const fileName = `REKAP_NILAI_PANCASILA_${safeName}_${result.student.kelas}.doc`;
 
-    // Generate table rows of questions and student answers
     let rowsHtml = '';
     result.answers.forEach((ans, idx) => {
       const q = QUESTIONS.find((item) => item.id === ans.questionId);
@@ -65,15 +142,6 @@ export const ResultReportCard: React.FC<ResultReportCardProps> = ({ result, onRe
       <head>
         <meta charset='utf-8'>
         <title>Laporan Asesmen Sumatif Pendidikan Pancasila Kelas XI - SMAN 1 Mande</title>
-        <!--[if gte mso 9]>
-        <xml>
-        <w:WordDocument>
-        <w:View>Print</w:View>
-        <w:Zoom>100</w:Zoom>
-        <w:DoNotOptimizeForBrowser/>
-        </w:WordDocument>
-        </xml>
-        <![endif]-->
         <style>
           body {
             font-family: 'Calibri', 'Arial', sans-serif;
@@ -164,7 +232,6 @@ export const ResultReportCard: React.FC<ResultReportCardProps> = ({ result, onRe
         </style>
       </head>
       <body>
-        <!-- KOP SURAT RESMI SMAN 1 MANDE -->
         <table class="kop-table" border="0">
           <tr>
             <td class="kop-text">
@@ -192,7 +259,6 @@ export const ResultReportCard: React.FC<ResultReportCardProps> = ({ result, onRe
           "TERIMAKASIH YANG SUDAH MENGISI QUIZ INI KALIAN LUAR BIASA"
         </div>
 
-        <!-- IDENTITAS SISWA & MATA PELAJARAN -->
         <table class="meta-table" border="0">
           <tr>
             <td style="width: 25%; font-weight: bold;">Mata Pelajaran</td>
@@ -218,7 +284,6 @@ export const ResultReportCard: React.FC<ResultReportCardProps> = ({ result, onRe
           </tr>
         </table>
 
-        <!-- REKAPITULASI NILAI -->
         <div class="score-box">
           <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; color: #0369a1;">NILAI AKHIR ASESMEN (SKALA 100)</div>
           <div class="score-num">${result.finalGrade}</div>
@@ -228,7 +293,6 @@ export const ResultReportCard: React.FC<ResultReportCardProps> = ({ result, onRe
           </div>
         </div>
 
-        <!-- DESKRIPSI CAPAIAN PEMBELAJARAN SESUAI MODUL AJAR KELAS XI -->
         <div style="font-weight: bold; font-size: 11pt; color: #0f172a; margin-bottom: 6px;">
           Deskripsi Capaian Pembelajaran (Kriteria Ketercapaian Tujuan Pembelajaran):
         </div>
@@ -236,7 +300,6 @@ export const ResultReportCard: React.FC<ResultReportCardProps> = ({ result, onRe
           ${result.description}
         </div>
 
-        <!-- RINCIAN BUTIR SOAL 1 S.D 30 -->
         <div style="font-weight: bold; font-size: 11pt; color: #0f172a; margin: 16px 0 8px 0;">
           Rincian Jawaban Soal Kuis (30 Butir Soal):
         </div>
@@ -255,7 +318,6 @@ export const ResultReportCard: React.FC<ResultReportCardProps> = ({ result, onRe
           </tbody>
         </table>
 
-        <!-- TANDA TANGAN DOKUMEN -->
         <table class="sig-table" border="0">
           <tr>
             <td>
@@ -337,10 +399,170 @@ Catatan Guru:
         </p>
       </div>
 
+      {/* ========================================================================= */}
+      {/* GOOGLE SHEETS LIVE INTEGRATION CARD */}
+      {/* ========================================================================= */}
+      <div className="mb-6 p-5 bg-emerald-50 border-3 border-emerald-500 rounded-2xl shadow-lg no-print">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-md">
+              <FileSpreadsheet className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm sm:text-base text-emerald-950 flex items-center gap-2">
+                <span>Integrasi Google Sheets (Data Terhubung Langsung)</span>
+                <span className="px-2 py-0.5 bg-emerald-200 text-emerald-800 text-[10px] rounded-full font-bold">ONLINE</span>
+              </h3>
+              <p className="text-xs text-emerald-800">
+                Kirim dan tautkan baris data nilai siswa ke Google Sheets secara otomatis (guru & siswa).
+              </p>
+            </div>
+          </div>
+
+          {/* User Sign In Badge */}
+          {currentUser ? (
+            <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-emerald-200 text-xs text-slate-700 shadow-xs">
+              {currentUser.photoURL ? (
+                <img src={currentUser.photoURL} alt="Avatar" className="w-6 h-6 rounded-full border border-slate-300" />
+              ) : (
+                <UserIcon className="w-4 h-4 text-emerald-600" />
+              )}
+              <span className="font-medium max-w-[140px] truncate">{currentUser.displayName || currentUser.email}</span>
+              <button
+                onClick={() => googleSignOut()}
+                className="text-slate-400 hover:text-red-600 ml-1 p-0.5 cursor-pointer"
+                title="Keluar Akun Google"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleGoogleLogin}
+              disabled={isLoggingIn}
+              className="flex items-center gap-2 px-3.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 48 48">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+              </svg>
+              <span>{isLoggingIn ? 'Menghubungkan...' : 'Masuk Akun Google'}</span>
+            </button>
+          )}
+        </div>
+
+        {/* Sync Action Area */}
+        <div className="pt-3 border-t border-emerald-200/80 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSyncToSheets}
+              disabled={isSyncingSheets}
+              className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md transition-all active:scale-95 cursor-pointer disabled:opacity-60"
+            >
+              {isSyncingSheets ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Menyinkronkan ke Google Sheets...</span>
+                </>
+              ) : (
+                <>
+                  <FileSpreadsheet className="w-4 h-4 text-yellow-300" />
+                  <span>Kirim & Tautkan Hasil Nilai ke Google Sheets</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={() => setShowSheetSettings(!showSheetSettings)}
+              className="p-2.5 text-emerald-800 hover:bg-emerald-100 rounded-xl transition-colors cursor-pointer"
+              title="Atur ID Spreadsheet Tertentu"
+            >
+              <Settings2 className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Direct Link to Google Sheets when generated */}
+          {(sheetUrl || syncSuccess) && (
+            <a
+              href={sheetUrl || `https://docs.google.com/spreadsheets/d/${sheetId}/edit`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-2.5 bg-white text-emerald-700 hover:text-emerald-800 border-2 border-emerald-600 font-bold text-xs sm:text-sm rounded-xl shadow-sm transition-all active:scale-95"
+            >
+              <span>Buka Google Sheets Nilai ↗</span>
+              <ExternalLink className="w-4 h-4" />
+            </a>
+          )}
+        </div>
+
+        {/* Success Alert Banner with Link */}
+        {syncSuccess && (
+          <div className="mt-3 p-3 bg-white border border-emerald-300 rounded-xl flex items-center justify-between text-xs text-emerald-900 animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+              <span>
+                <strong>Berhasil Terhubung!</strong> Data nilai <strong>{result.student.nama}</strong> ({result.student.kelas}) telah dicatat ke baris Google Sheets.
+              </span>
+            </div>
+            <a
+              href={sheetUrl || `https://docs.google.com/spreadsheets/d/${sheetId}/edit`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline font-bold text-emerald-700 hover:text-emerald-900 whitespace-nowrap ml-2"
+            >
+              Buka File Sekarang
+            </a>
+          </div>
+        )}
+
+        {/* Error message */}
+        {syncError && (
+          <div className="mt-3 p-3 bg-red-100 border border-red-300 text-red-800 rounded-xl text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+            <span>{syncError}</span>
+          </div>
+        )}
+
+        {/* Custom Spreadsheet ID config drawer */}
+        {showSheetSettings && (
+          <div className="mt-3 p-3 bg-white rounded-xl border border-emerald-200 text-xs space-y-2">
+            <label className="block font-semibold text-slate-700">
+              ID Google Spreadsheet Master (Opsional - Jika ingin ditautkan ke Spreadsheet tertentu milik guru):
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={sheetId}
+                onChange={(e) => {
+                  setSheetId(e.target.value);
+                  saveSpreadsheetId(e.target.value);
+                }}
+                placeholder="Contoh: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                className="flex-1 px-3 py-2 border rounded-lg font-mono text-xs"
+              />
+              <button
+                onClick={() => {
+                  saveSpreadsheetId(sheetId);
+                  alert('ID Spreadsheet tersimpan.');
+                }}
+                className="px-3 py-2 bg-emerald-700 text-white rounded-lg font-semibold hover:bg-emerald-800"
+              >
+                Simpan
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              *Jika dikosongkan, sistem akan otomatis membuat file Google Spreadsheet baru berjudul "REKAPITULASI NILAI PENDIDIKAN PANCASILA SMAN 1 MANDE - KELAS XI" di Google Drive akun Anda.
+            </p>
+          </div>
+        )}
+      </div>
+
       {/* Action buttons (Download Word, Print/PDF, and Copy) */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6 no-print">
         <div className="flex flex-wrap items-center gap-2">
-          {/* Unduh Word Button (.doc / .docx) */}
+          {/* Unduh Word Button (.doc) */}
           <button
             onClick={handleDownloadWord}
             disabled={downloadingWord}
@@ -377,16 +599,6 @@ Catatan Guru:
           <RotateCcw className="w-4 h-4" />
           <span>Mainkan Lagi</span>
         </button>
-      </div>
-
-      {/* Device Compatibility Notice */}
-      <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between text-xs text-blue-900 no-print">
-        <div className="flex items-center gap-2">
-          <FileText className="w-4 h-4 text-blue-600 shrink-0" />
-          <span>
-            <strong>Tips Unduh Nilai:</strong> File Word (<strong>.doc</strong>) tersimpan di folder Unduhan / Download dan dapat langsung dibuka di aplikasi Microsoft Word, Google Docs, atau WPS Office pada <strong>Handphone (Android/iOS)</strong> maupun <strong>Komputer/Laptop</strong>.
-          </span>
-        </div>
       </div>
 
       {/* Printable Official Document / Report Slip */}

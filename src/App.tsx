@@ -25,8 +25,12 @@ import {
   AlertCircle,
   ListOrdered,
   Layers,
-  ArrowRight
+  ArrowRight,
+  FileSpreadsheet,
+  LogOut
 } from 'lucide-react';
+import { initAuth, googleSignIn, googleSignOut } from './services/googleAuth';
+import { User as FirebaseUser } from 'firebase/auth';
 
 export default function App() {
   // Navigation / Game Screen State
@@ -79,6 +83,40 @@ export default function App() {
 
   // Final evaluation result
   const [gameResult, setGameResult] = useState<GameResult | null>(null);
+
+  // Google Account for Google Sheets synchronization
+  const [googleUser, setGoogleUser] = useState<FirebaseUser | null>(null);
+  const [isSigningInGoogle, setIsSigningInGoogle] = useState<boolean>(false);
+
+  useEffect(() => {
+    const unsubscribe = initAuth(
+      (user) => setGoogleUser(user),
+      () => setGoogleUser(null)
+    );
+    return () => unsubscribe();
+  }, []);
+
+  const handleGoogleAuthToggle = async () => {
+    if (googleUser) {
+      const confirmLogout = window.confirm('Apakah Anda yakin ingin memutus tautan akun Google?');
+      if (confirmLogout) {
+        await googleSignOut();
+        setGoogleUser(null);
+      }
+    } else {
+      try {
+        setIsSigningInGoogle(true);
+        const res = await googleSignIn();
+        if (res?.user) {
+          setGoogleUser(res.user);
+        }
+      } catch (err: any) {
+        console.error('Google Sign In error:', err);
+      } finally {
+        setIsSigningInGoogle(false);
+      }
+    }
+  };
 
   // Save student to local storage
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -395,6 +433,29 @@ export default function App() {
               </button>
             )}
 
+            {/* Google Sheets Integration Status / Button */}
+            {googleUser ? (
+              <button
+                onClick={handleGoogleAuthToggle}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer border border-emerald-400"
+                title={`Akun Google terhubung: ${googleUser.email}. Klik untuk keluar.`}
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-yellow-300" />
+                <span className="hidden lg:inline max-w-[100px] truncate">{googleUser.displayName || 'Google Aktif'}</span>
+                <span className="text-[10px] bg-emerald-800/80 px-1.5 py-0.5 rounded text-emerald-100 font-mono">Sheets ✓</span>
+              </button>
+            ) : (
+              <button
+                onClick={handleGoogleAuthToggle}
+                disabled={isSigningInGoogle}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/90 hover:bg-white text-slate-800 rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer border border-sky-300"
+                title="Hubungkan akun Google untuk sinkronisasi nilai ke Google Sheets"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="hidden sm:inline">{isSigningInGoogle ? 'Menghubungkan...' : 'Google Sheets'}</span>
+              </button>
+            )}
+
             <button
               onClick={toggleMute}
               className="p-2 bg-sky-700/80 hover:bg-sky-800 text-white rounded-lg transition-colors cursor-pointer"
@@ -493,6 +554,13 @@ export default function App() {
               <div className="pt-2 border-t border-sky-200/60 flex items-center justify-between text-xs text-sky-800">
                 <span className="font-semibold">Guru Pengampu:</span>
                 <span className="font-bold">Munawar Rois, S.Pd.</span>
+              </div>
+
+              <div className="bg-emerald-50 rounded-xl p-2.5 border border-emerald-200 flex items-center gap-2.5 text-xs text-emerald-850">
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="text-[11px] text-emerald-900 leading-tight">
+                  <strong className="text-emerald-950 font-bold">Terintegrasi Google Sheets:</strong> Data hasil nilai langsung ngelink dan tersinkronisasi ke Google Sheets rekapitulasi penilaian kelas.
+                </span>
               </div>
             </div>
 
