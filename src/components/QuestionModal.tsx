@@ -22,16 +22,15 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
   const [hasSubmitted, setHasSubmitted] = useState<boolean>(false);
   const [isCorrect, setIsCorrect] = useState<boolean>(false);
 
+  // Hook 1: Reset state when question changes
   useEffect(() => {
     setSelectedOption(null);
     setHasSubmitted(false);
     setIsCorrect(false);
   }, [question]);
 
-  if (!question) return null;
-
   const handleSelect = (idx: number) => {
-    if (hasSubmitted) return;
+    if (!question || hasSubmitted) return;
     setSelectedOption(idx);
     const correct = idx === question.correctIndex;
     setIsCorrect(correct);
@@ -52,8 +51,10 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
     }
   };
 
-  // Keyboard shortcut support
+  // Hook 2: Keyboard shortcut support (MUST BE UNCONDITIONAL)
   useEffect(() => {
+    if (!question) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!hasSubmitted) {
         if (['1', 'a', 'A'].includes(e.key)) handleSelect(0);
@@ -69,7 +70,10 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasSubmitted, selectedOption, isCorrect]);
+  }, [question, hasSubmitted, selectedOption, isCorrect]);
+
+  // Early return AFTER ALL HOOKS
+  if (!question) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150">

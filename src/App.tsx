@@ -629,13 +629,15 @@ export default function App() {
 
       {/* 4. MODALS & POP-UPS */}
       {/* Question Modal for Block '?' */}
-      <QuestionModal
-        question={activeQuestion}
-        questionNumber={activeQuestion ? activeQuestion.id : 1}
-        totalQuestions={QUESTIONS.length}
-        onAnswer={handleAnswerSubmit}
-        onClose={() => setActiveQuestion(null)}
-      />
+      {activeQuestion && (
+        <QuestionModal
+          question={activeQuestion}
+          questionNumber={activeQuestion.id}
+          totalQuestions={QUESTIONS.length}
+          onAnswer={handleAnswerSubmit}
+          onClose={() => setActiveQuestion(null)}
+        />
+      )}
 
       {/* Anti-Cheat Warning Modal */}
       <AntiCheatModal
