@@ -264,7 +264,7 @@ export default function App() {
       soundManager.playVictory();
       setTransitionNotice({
         show: true,
-        text: '🎉 SELAMAT! Seluruh soal World 1, 2, & 3 telah selesai! Menerbitkan Rekap Nilai Asesmen...',
+        text: '🎉 SELAMAT! Seluruh soal World 1, 2, & 3 telah selesai disundul! Menerbitkan Rekap Nilai Asesmen...',
       });
       setTimeout(() => {
         setTransitionNotice({ show: false, text: '' });
@@ -275,48 +275,31 @@ export default function App() {
       return;
     }
 
-    // AUTOMATIC ADVANCE WORLD 1 -> WORLD 2:
+    // AUTOMATIC ADVANCE WORLD 1 -> WORLD 2 (When all 10 blocks in World 1 are sundul/answered):
     if (currentWorld === 1 && (isWorld1Complete || currentId === 10)) {
       setCurrentWorld(2);
       soundManager.playPowerup();
       setTransitionNotice({
         show: true,
-        text: '🚀 HEBAT! Soal World 1 selesai, otomatis lanjut ke World 2 (Hierarki Peraturan Perundang-Undangan)!',
+        text: '🚀 HEBAT! 10 Balok di World 1 selesai disundul! Lanjut ke World 2: Gerakkan Mario untuk menyundul Balok No. 11!',
       });
-      setTimeout(() => setTransitionNotice({ show: false, text: '' }), 4000);
-
-      const nextQ = QUESTIONS.find((q) => q.id === 11);
-      if (nextQ && !nextMap.has(11)) {
-        setTimeout(() => setActiveQuestion(nextQ), 700);
-      }
+      setTimeout(() => setTransitionNotice({ show: false, text: '' }), 5000);
       return;
     }
 
-    // AUTOMATIC ADVANCE WORLD 2 -> WORLD 3:
+    // AUTOMATIC ADVANCE WORLD 2 -> WORLD 3 (When all 10 blocks in World 2 are sundul/answered):
     if (currentWorld === 2 && (isWorld2Complete || currentId === 20)) {
       setCurrentWorld(3);
       soundManager.playPowerup();
       setTransitionNotice({
         show: true,
-        text: '🚀 LUAR BIASA! Soal World 2 selesai, otomatis lanjut ke World 3 (Jenis & Materi Muatan Produk Hukum)!',
+        text: '🚀 LUAR BIASA! 10 Balok di World 2 selesai disundul! Lanjut ke World 3: Gerakkan Mario untuk menyundul Balok No. 21!',
       });
-      setTimeout(() => setTransitionNotice({ show: false, text: '' }), 4000);
-
-      const nextQ = QUESTIONS.find((q) => q.id === 21);
-      if (nextQ && !nextMap.has(21)) {
-        setTimeout(() => setActiveQuestion(nextQ), 700);
-      }
+      setTimeout(() => setTransitionNotice({ show: false, text: '' }), 5000);
       return;
     }
 
-    // AUTOMATIC SEQUENTIAL NEXT QUESTION WITHIN SAME WORLD:
-    const nextQId = currentId + 1;
-    if (nextQId <= 30 && !nextMap.has(nextQId)) {
-      const nextQ = QUESTIONS.find((q) => q.id === nextQId);
-      if (nextQ) {
-        setTimeout(() => setActiveQuestion(nextQ), 500);
-      }
-    }
+    // Modal closes peacefully: Mario is now on stage, ready to run and sundul the next block!
   };
 
   // Manual Finish Game
@@ -606,27 +589,21 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Direct Quiz Trigger Button */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleTriggerQuestion(nextUnanswered)}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-bold rounded-xl text-xs font-retro shadow-md transition-all active:scale-95 cursor-pointer"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>BUKA SOAL KUIS SEKARANG</span>
-                </button>
+              {/* Status Info */}
+              <div className="flex items-center gap-2 text-xs font-semibold text-sky-900 bg-sky-100 px-3 py-1.5 rounded-xl">
+                <span>Mario: Sundul Balok '?' untuk Buka Soal</span>
               </div>
             </div>
 
-            {/* Bilah Akses Cepat 10 Blok Soal */}
-            <div className="w-full max-w-5xl bg-slate-900/90 text-white p-3 rounded-2xl border-2 border-yellow-400 shadow-md">
-              <div className="flex items-center justify-between mb-2 px-1">
+            {/* Status 10 Balok Soal di World Ini (Mario Menyundul Balok) */}
+            <div className="w-full max-w-5xl bg-slate-900/95 text-white p-3 rounded-2xl border-2 border-yellow-400 shadow-md">
+              <div className="flex flex-wrap items-center justify-between mb-2.5 px-1 gap-2">
                 <span className="font-retro text-[10px] text-yellow-300 flex items-center gap-1.5">
                   <ListOrdered className="w-3.5 h-3.5" />
-                  <span>DAFTAR 10 SOAL WORLD {currentWorld} (KLIK UNTUK BUKA SOAL):</span>
+                  <span>STATUS 10 BALOK WORLD {currentWorld} (LOMPAT & SUNDUL BALOK DENGAN KEPALA MARIO):</span>
                 </span>
-                <span className="text-[11px] text-slate-400 font-mono">
-                  {currentWorldQuestions.filter((q) => answeredQuestionIds.has(q.id)).length}/10 Terjawab
+                <span className="text-[11px] text-emerald-300 font-mono font-bold">
+                  {currentWorldQuestions.filter((q) => answeredQuestionIds.has(q.id)).length}/10 Balok Disundul
                 </span>
               </div>
 
@@ -635,29 +612,31 @@ export default function App() {
                   const isDone = answeredQuestionIds.has(q.id);
                   const isCorrect = answeredMap.get(q.id)?.isCorrect;
 
-                  let blockClass = 'bg-yellow-400 hover:bg-yellow-300 text-slate-950 border-yellow-300 shadow-xs';
+                  let blockClass = 'bg-yellow-400 text-slate-950 border-yellow-300 shadow-xs';
                   let symbol = '?';
+                  let statusText = 'Belum Disundul';
 
                   if (isDone) {
                     if (isCorrect) {
-                      blockClass = 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400';
+                      blockClass = 'bg-emerald-600 text-white border-emerald-400';
                       symbol = '✓';
+                      statusText = 'Terjawab Benar';
                     } else {
-                      blockClass = 'bg-red-600 hover:bg-red-500 text-white border-red-400';
+                      blockClass = 'bg-red-600 text-white border-red-400';
                       symbol = '!';
+                      statusText = 'Sudah Disundul';
                     }
                   }
 
                   return (
-                    <button
+                    <div
                       key={q.id}
-                      onClick={() => handleTriggerQuestion(q)}
-                      className={`flex flex-col items-center justify-center p-2 rounded-xl border-2 font-retro transition-transform active:scale-90 cursor-pointer ${blockClass}`}
-                      title={`Soal No. ${q.id}: ${q.topic}`}
+                      className={`flex flex-col items-center justify-center p-2 rounded-xl border-2 font-retro transition-transform ${blockClass}`}
+                      title={`Balok Soal No. ${q.id}: ${statusText}`}
                     >
                       <span className="text-sm font-bold">{symbol}</span>
                       <span className="text-[9px] font-mono mt-0.5 font-bold">No.{q.id}</span>
-                    </button>
+                    </div>
                   );
                 })}
               </div>

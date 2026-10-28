@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Question } from '../types/game';
 import { soundManager } from '../utils/audio';
-import { ArrowLeft, ArrowRight, ArrowUp, Volume2, VolumeX, HelpCircle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ArrowUp, Volume2, VolumeX } from 'lucide-react';
 
 interface MarioGameCanvasProps {
   currentWorld: number;
@@ -56,7 +56,6 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isAudioMuted, setIsAudioMuted] = useState(soundManager.isMuted());
-  const [nearbyQuestion, setNearbyQuestion] = useState<Question | null>(null);
 
   // Input state
   const keys = useRef<{ left: boolean; right: boolean; jump: boolean }>({
@@ -71,9 +70,9 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
   const GROUND_Y = 380;
   const LEVEL_WIDTH = 3200;
 
-  // Mario state
+  // Mario physics & state
   const mario = useRef({
-    x: 120,
+    x: 100,
     y: GROUND_Y - 36,
     width: 28,
     height: 36,
@@ -102,19 +101,20 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
   const particlesRef = useRef<Particle[]>([]);
   const cameraXRef = useRef<number>(0);
 
-  // Initialize level ONLY when currentWorld changes
+  // Initialize level when currentWorld changes
   const initLevel = useCallback(() => {
     const worldQuestions = questions.filter((q) => q.world === currentWorld);
 
-    // Setup 10 question blocks spaced comfortably
+    // Setup 10 question blocks spaced comfortably at perfect jump-head height
     const newBlocks: Block[] = [];
-    const blockSpacing = 240;
-    const startX = 220; // Starts close so student sees first block immediately!
+    const blockSpacing = 250;
+    const startX = 240;
 
     worldQuestions.forEach((q, idx) => {
       newBlocks.push({
         x: startX + idx * blockSpacing,
-        y: GROUND_Y - (idx % 2 === 0 ? 100 : 130),
+        // Blocks are placed at reachable jump height (85px or 105px from ground)
+        y: GROUND_Y - (idx % 2 === 0 ? 85 : 105),
         width: 36,
         height: 36,
         questionId: q.id,
@@ -124,18 +124,18 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
     });
     blocksRef.current = newBlocks;
 
-    // Goombas
+    // Goombas (Obstacles)
     const newGoombas: Goomba[] = [
-      { x: 420, y: GROUND_Y - 24, vx: -0.9, squished: false, squishTimer: 0 },
-      { x: 950, y: GROUND_Y - 24, vx: -0.9, squished: false, squishTimer: 0 },
-      { x: 1500, y: GROUND_Y - 24, vx: -0.9, squished: false, squishTimer: 0 },
-      { x: 2100, y: GROUND_Y - 24, vx: -0.9, squished: false, squishTimer: 0 },
-      { x: 2650, y: GROUND_Y - 24, vx: -0.9, squished: false, squishTimer: 0 },
+      { x: 480, y: GROUND_Y - 24, vx: -0.9, squished: false, squishTimer: 0 },
+      { x: 1000, y: GROUND_Y - 24, vx: -0.9, squished: false, squishTimer: 0 },
+      { x: 1550, y: GROUND_Y - 24, vx: -0.9, squished: false, squishTimer: 0 },
+      { x: 2150, y: GROUND_Y - 24, vx: -0.9, squished: false, squishTimer: 0 },
+      { x: 2700, y: GROUND_Y - 24, vx: -0.9, squished: false, squishTimer: 0 },
     ];
     goombasRef.current = newGoombas;
 
-    // Reset Mario to starting position of this world
-    mario.current.x = 100;
+    // Reset Mario position for new world
+    mario.current.x = 80;
     mario.current.y = GROUND_Y - 36;
     mario.current.vx = 0;
     mario.current.vy = 0;
@@ -145,13 +145,13 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
     flagPole.current.flagY = GROUND_Y - 250;
     flagPole.current.finished = false;
     cameraXRef.current = 0;
-  }, [currentWorld, questions]); // Deliberately omit answeredQuestions to prevent Mario reset!
+  }, [currentWorld, questions]);
 
   useEffect(() => {
     initLevel();
   }, [initLevel]);
 
-  // Update block hit status without resetting Mario
+  // Update block status when questions are answered without resetting Mario position
   useEffect(() => {
     blocksRef.current.forEach((b) => {
       if (answeredQuestions.has(b.questionId)) {
@@ -173,15 +173,11 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
       }
       if (['ArrowUp', 'Space', 'KeyW', 'w'].includes(e.code)) {
         if (!keys.current.jump && mario.current.grounded) {
-          mario.current.vy = -13;
+          mario.current.vy = -13; // Crisp high jump to easily sundul blocks
           mario.current.grounded = false;
           soundManager.playJump();
         }
         keys.current.jump = true;
-      }
-      // Enter or E to trigger nearby question block
-      if (['Enter', 'KeyE', 'e'].includes(e.code) && nearbyQuestion) {
-        onTriggerQuestion(nearbyQuestion);
       }
     };
 
@@ -203,36 +199,7 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isPaused, nearbyQuestion, onTriggerQuestion]);
-
-  // Canvas Click / Tap Handler: Clicking on or near question blocks directly triggers them
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = CANVAS_WIDTH / rect.width;
-    const scaleY = CANVAS_HEIGHT / rect.height;
-
-    const clickX = (e.clientX - rect.left) * scaleX;
-    const clickY = (e.clientY - rect.top) * scaleY;
-    const worldClickX = clickX + cameraXRef.current;
-
-    // Check if clicked any question block (generous hit radius)
-    for (const block of blocksRef.current) {
-      const dist = Math.hypot(worldClickX - (block.x + block.width / 2), clickY - (block.y + block.height / 2));
-      if (dist < 45) {
-        soundManager.playBump();
-        const q = questions.find((item) => item.id === block.questionId);
-        if (q) {
-          block.bounceOffset = 8;
-          soundManager.playCoin();
-          onTriggerQuestion(q);
-          return;
-        }
-      }
-    }
-  };
+  }, [isPaused]);
 
   // Main Canvas Game Loop
   useEffect(() => {
@@ -271,7 +238,7 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
             m.vx = speed;
             m.facing = 'right';
           } else {
-            m.vx *= 0.75; // Friction
+            m.vx *= 0.75;
             if (Math.abs(m.vx) < 0.1) m.vx = 0;
           }
 
@@ -290,11 +257,11 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
           m.vy += 0.65;
           if (m.vy > 12) m.vy = 12;
 
-          // Position update
+          // Update position
           m.x += m.vx;
           m.y += m.vy;
 
-          // Level boundaries
+          // Boundaries
           if (m.x < 10) m.x = 10;
           if (m.x > LEVEL_WIDTH - 80) m.x = LEVEL_WIDTH - 80;
 
@@ -310,78 +277,84 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
           // Invincibility cooldown
           if (m.invincibleTimer > 0) m.invincibleTimer--;
 
-          // Proximity & Block Collision Check
-          let closestQuestion: Question | null = null;
-          let minDistance = 9999;
-
+          // =========================================================================
+          // OTENTIK: MARIO MENYUNDUL BALOK DARI BAWAH (HEAD BUMP COLLISION)
+          // =========================================================================
           blocksRef.current.forEach((block) => {
             // Decay bounce animation
             if (block.bounceOffset > 0) {
-              block.bounceOffset -= 1.5;
+              block.bounceOffset -= 1.6;
               if (block.bounceOffset < 0) block.bounceOffset = 0;
             }
 
-            // Check distance to Mario
-            const blockCenterX = block.x + block.width / 2;
-            const blockCenterY = block.y + block.height / 2;
-            const marioCenterX = m.x + m.width / 2;
-            const marioCenterY = m.y + m.height / 2;
-            const dist = Math.hypot(marioCenterX - blockCenterX, marioCenterY - blockCenterY);
+            // 1. MENYUNDUL BALOK DARI BAWAH (HEAD BUMP)
+            // Mario bergerak ke atas atau di puncak lompatan (m.vy <= 1)
+            // Tubuh Mario berada di bawah balok secara horizontal
+            // Kepala Mario (m.y) menyundul permukaan bawah balok (block.y + block.height)
+            const isHorizontallyAligned =
+              m.x + m.width > block.x + 4 &&
+              m.x < block.x + block.width - 4;
 
-            if (dist < 75 && dist < minDistance && !block.hit) {
-              minDistance = dist;
-              const q = questions.find((item) => item.id === block.questionId);
-              if (q) closestQuestion = q;
-            }
+            const isHeadingBottom =
+              m.y <= block.y + block.height + 4 &&
+              m.y >= block.y + block.height - 18 &&
+              m.vy <= 1.5;
 
-            // FORGIVING COLLISION DETECTION:
-            // 1. Underneath head hit:
-            const horizontalOverlap = m.x + m.width >= block.x - 6 && m.x <= block.x + block.width + 6;
-            const headHit =
-              horizontalOverlap &&
-              m.y <= block.y + block.height + 6 &&
-              m.y >= block.y + 4 &&
-              m.vy < 3;
+            if (isHorizontallyAligned && isHeadingBottom) {
+              // Mario terpental ke bawah akibat sundulan kepala
+              m.y = block.y + block.height + 1;
+              m.vy = 2.5;
 
-            // 2. Body collision into unhit block:
-            const bodyOverlap =
-              m.x + m.width >= block.x &&
-              m.x <= block.x + block.width &&
-              m.y + m.height >= block.y &&
-              m.y <= block.y + block.height;
-
-            if (headHit || (bodyOverlap && !block.hit)) {
-              m.y = block.y + block.height + 2;
-              m.vy = 1;
-              block.bounceOffset = 10;
+              // Efek sundulan balok membal ke atas
+              block.bounceOffset = 12;
               soundManager.playBump();
 
+              // Jika balok belum pernah disundul/dijawab:
               if (!block.hit) {
                 soundManager.playCoin();
-                spawnParticles(block.x + 18, block.y, '#facc15', 14);
+                spawnParticles(block.x + block.width / 2, block.y - 6, '#facc15', 14);
+
                 const q = questions.find((item) => item.id === block.questionId);
                 if (q) {
-                  onTriggerQuestion(q);
+                  // Munculkan pertanyaan HANYA setelah Mario menyundul balok!
+                  setTimeout(() => {
+                    onTriggerQuestion(q);
+                  }, 180);
                 }
               }
+              return;
             }
 
-            // Stand on top of block
-            const isOnTop =
-              m.x + m.width > block.x + 2 &&
-              m.x < block.x + block.width - 2 &&
+            // 2. Berdiri di atas balok (Mario mendarat di atas balok sebagai pijakan)
+            const isLandingOnTop =
+              m.x + m.width > block.x + 4 &&
+              m.x < block.x + block.width - 4 &&
               m.y + m.height >= block.y &&
               m.y + m.height <= block.y + 14 &&
               m.vy >= 0;
 
-            if (isOnTop) {
+            if (isLandingOnTop) {
               m.y = block.y - m.height;
               m.vy = 0;
               m.grounded = true;
+              return;
+            }
+
+            // 3. Hambatan samping (balok adalah benda padat saat jalan)
+            const isCollidingSide =
+              m.y + m.height > block.y + 6 &&
+              m.y < block.y + block.height - 4;
+
+            if (isCollidingSide) {
+              if (m.vx > 0 && m.x + m.width >= block.x && m.x < block.x) {
+                m.x = block.x - m.width;
+                m.vx = 0;
+              } else if (m.vx < 0 && m.x <= block.x + block.width && m.x + m.width > block.x + block.width) {
+                m.x = block.x + block.width;
+                m.vx = 0;
+              }
             }
           });
-
-          setNearbyQuestion(closestQuestion);
 
           // Goombas
           goombasRef.current.forEach((g) => {
@@ -418,7 +391,7 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
             }
           });
 
-          // Check Flagpole Collision
+          // Check Flagpole Collision at level end
           const pole = flagPole.current;
           if (
             !pole.finished &&
@@ -507,18 +480,6 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
         drawMario(ctx, m);
       }
 
-      // Proximity Indicator Prompt above Mario if near a Question Block
-      if (nearbyQuestion && !isPaused) {
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 11px "Press Start 2P", monospace';
-        ctx.textAlign = 'center';
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 3;
-        const promptY = m.y - 18 + Math.sin(Date.now() / 150) * 3;
-        ctx.strokeText(`[?] SOAL ${nearbyQuestion.id}`, m.x + m.width / 2, promptY);
-        ctx.fillText(`[?] SOAL ${nearbyQuestion.id}`, m.x + m.width / 2, promptY);
-      }
-
       // Particles
       for (let i = particlesRef.current.length - 1; i >= 0; i--) {
         const p = particlesRef.current[i];
@@ -538,7 +499,7 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
 
     animId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animId);
-  }, [questions, onTriggerQuestion, onFinishGame, onAddScore, isPaused, nearbyQuestion]);
+  }, [questions, onTriggerQuestion, onFinishGame, onAddScore, isPaused]);
 
   // Helper Drawing Functions
   const drawClouds = (ctx: CanvasRenderingContext2D) => {
@@ -617,7 +578,7 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
     const by = b.y - b.bounceOffset;
 
     if (b.hit) {
-      // Metallic used block
+      // Used metallic block
       ctx.fillStyle = '#8c5224';
       ctx.fillRect(b.x, by, b.width, b.height);
       ctx.strokeStyle = '#000000';
@@ -797,7 +758,7 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
     }
 
     if (!m.grounded) {
-      // Jump pose
+      // Jump pose with raised arm
       ctx.fillStyle = '#dc2626';
       ctx.fillRect(ox + 6, oy + 2, 20, 8);
       ctx.fillRect(ox + 10, oy, 12, 4);
@@ -813,9 +774,9 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
 
       ctx.fillStyle = '#dc2626';
       ctx.fillRect(ox + 6, oy + 18, 16, 8);
-      ctx.fillRect(ox + 20, oy + 10, 8, 6);
+      ctx.fillRect(ox + 20, oy + 8, 8, 8); // Arm raised upwards to head the block!
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(ox + 24, oy + 6, 6, 6);
+      ctx.fillRect(ox + 24, oy + 4, 6, 6); // Fist
 
       ctx.fillStyle = '#2563eb';
       ctx.fillRect(ox + 6, oy + 22, 16, 10);
@@ -922,16 +883,6 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {nearbyQuestion && (
-            <button
-              onClick={() => onTriggerQuestion(nearbyQuestion)}
-              className="px-3 py-1 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-bold rounded animate-pulse cursor-pointer flex items-center gap-1"
-            >
-              <HelpCircle className="w-3.5 h-3.5" />
-              <span>BUKA SOAL {nearbyQuestion.id}</span>
-            </button>
-          )}
-
           <button
             onClick={toggleSound}
             className="p-1.5 bg-slate-800 hover:bg-slate-700 text-yellow-300 rounded border border-yellow-400/50 cursor-pointer"
@@ -942,32 +893,19 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
         </div>
       </div>
 
-      {/* Main Game Canvas with Click / Touch to open block */}
-      <div className="relative w-full aspect-16/9 bg-sky-400 overflow-hidden cursor-crosshair">
+      {/* Main Game Canvas */}
+      <div className="relative w-full aspect-16/9 bg-sky-400 overflow-hidden">
         <canvas
           ref={canvasRef}
           width={CANVAS_WIDTH}
           height={CANVAS_HEIGHT}
-          onClick={handleCanvasClick}
           className="w-full h-full block pixelated"
         />
 
-        {/* Informative Guidance Banner */}
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 pointer-events-none bg-slate-900/80 backdrop-blur-xs px-4 py-1.5 rounded-full text-[11px] text-yellow-300 font-semibold tracking-wide border border-yellow-400/50 shadow-md">
-          ✨ Sundul Blok "?" dari bawah, ketuk blok pada layar, atau klik tombol soal di bawah!
+        {/* Clear Instructions Banner */}
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 pointer-events-none bg-slate-900/85 backdrop-blur-xs px-4 py-1.5 rounded-full text-[11px] text-yellow-300 font-bold tracking-wide border border-yellow-400/50 shadow-md">
+          🍄 Lompat dan SUNDUL Balok '?' dengan kepala Mario untuk memunculkan soal!
         </div>
-
-        {/* Quick Click Button if Mario is near any question */}
-        {nearbyQuestion && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
-            <button
-              onClick={() => onTriggerQuestion(nearbyQuestion)}
-              className="px-5 py-2.5 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-retro text-xs font-bold rounded-xl shadow-2xl border-2 border-slate-950 animate-bounce cursor-pointer flex items-center gap-2"
-            >
-              <span>❓ BUKA & JAWAB SOAL NO. {nearbyQuestion.id}</span>
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Mobile Touch Controls */}
@@ -994,11 +932,7 @@ export const MarioGameCanvas: React.FC<MarioGameCanvasProps> = ({
         </div>
 
         <div className="text-[11px] text-slate-300 font-medium text-center">
-          {nearbyQuestion ? (
-            <span className="text-yellow-300 font-bold">Tekan Spasi / Enter untuk Buka Soal!</span>
-          ) : (
-            <span>Gunakan Panah / A-D & Spasi untuk Berpetualang</span>
-          )}
+          Gunakan Tombol Panah / A-D & Spasi di Keyboard atau Tombol Sentuh di Layar
         </div>
 
         <div>
